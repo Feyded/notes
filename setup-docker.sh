@@ -1,36 +1,67 @@
-#!/bin/bash
 
-sudo -i <<EOF
+#!/usr/bin/env bash
 
-# Update the package list
+set -euo pipefail
+
+# Ensure the script runs as root
+if [[ "$EUID" -ne 0 ]]; then
+    echo "Please run this script with sudo:"
+    echo "sudo bash setup-docker.sh"
+    exit 1
+fi
+
+echo "Updating Ubuntu packages..."
+
 apt-get update
 
-# Install prerequisites
-apt-get install -y \
-    apt-transport-https \
-    ca-certificates \
-    curl \
-    software-properties-common
+echo "Installing prerequisites..."
 
-# Add Docker’s official GPG key
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
+apt-get install -y ca-certificates curl
 
-# Add Docker's apt repository.
-add-apt-repository \
-   "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
-   $(lsb_release -cs) \
-   stable"
+# Create Docker keyring directory
+install -m 0755 -d /etc/apt/keyrings
 
-# Update the package list (again)
-apt-get update
+# Download Docker's official GPG key
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+    -o /etc/apt/keyrings/docker.asc
 
-# Install Docker
-apt-get install -y docker-ce
+chmod a+r /etc/apt/keyrings/docker.asc
 
-# Add the current user to the Docker group
-# In this script, the 'root' should be replaced with your actual username
-usermod -aG docker root
+# Configure Docker's official repository
+echo "Adding Docker repository..."
 
-echo "Docker installation done"
-
+cat > /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
 EOF
+
+# Update package index
+apt-get update
+
+# Install Docker Engine and plugins
+echo "Installing Docker..."
+
+apt-get install -y \
+    docker-ce \
+    docker-ce-cli \
+    containerd.io \
+    docker-buildx-plugin \
+    docker-compose-plugin
+
+# Enable Docker on system startup
+systemctl enable docker
+systemctl start docker
+
+echo "=================================="
+echo "Docker installation completed!"
+echo "=================================="
+
+docker --version
+docker compose version
+
+echo "Docker service status:"
+systemctl is-active docker
